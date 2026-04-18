@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>테런 염색 값 변환기</title>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #eef2ff;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+        }
+
+        body { 
+            font-family: "Pretendard Variable", Pretendard, sans-serif;
+            background: var(--bg); color: var(--text-main); 
+            display: flex; flex-direction: column; align-items: center; 
+            padding: 40px 20px; margin: 0; line-height: 1.5;
+        }
+
+        .container { 
+            max-width: 850px; width: 100%; background: var(--card); 
+            padding: 32px; border-radius: 24px; 
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); 
+        }
+
+        h2 { font-size: 1.75rem; font-weight: 800; margin: 0 0 24px 0; text-align: center; letter-spacing: -0.02em; }
+
+        .upload-area { 
+            border: 2px dashed #e2e8f0; border-radius: 16px; padding: 60px 20px; 
+            text-align: center; cursor: pointer; margin-bottom: 24px; 
+            transition: all 0.2s ease; background: #fafafa;
+        }
+        .upload-area:hover { border-color: var(--primary); background: var(--primary-light); }
+
+        #canvas-container { 
+            position: relative; border-radius: 12px; border: 1px solid #e2e8f0; 
+            display: none; cursor: crosshair; margin-bottom: 24px; overflow: hidden; background: #000;
+        }
+        canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+        #magnifier {
+            position: absolute; pointer-events: none; width: 130px; height: 130px;
+            border: 4px solid #fff; border-radius: 50%; overflow: hidden;
+            display: none; box-shadow: 0 12px 24px rgba(0,0,0,0.3); z-index: 10;
+        }
+
+        .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+
+        .result-card { background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid #f1f5f9; }
+        .result-card h3 { margin: 0 0 12px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-sub); }
+
+        .value { font-size: 1.25rem; font-weight: 700; color: var(--text-main); }
+        .sub-value { font-size: 0.95rem; color: var(--text-sub); margin-top: 4px; font-weight: 500; }
+
+        .color-preview { width: 100%; height: 48px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(0,0,0,0.05); box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+
+        .tr-special { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border: none; }
+        .tr-special h3 { color: rgba(255,255,255,0.8); }
+        .tr-special .tr-list { display: flex; flex-direction: column; gap: 8px; color: white; font-size: 1.3rem; font-weight: 800; }
+        .tr-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; }
+        .tr-item:last-child { border-bottom: none; }
+        .tr-label { font-size: 0.9rem; opacity: 0.8; font-weight: 500; }
+
+        button { 
+            background: var(--primary); color: white; border: none; padding: 12px 24px; 
+            border-radius: 10px; cursor: pointer; font-weight: 600; font-family: inherit; transition: transform 0.1s ease;
+        }
+        button:active { transform: scale(0.98); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>테런 염색 값 변환기</h2>
+    
+    <div id="drop-zone" class="upload-area">
+        <p style="font-size: 1.125rem; font-weight: 700; margin-bottom: 8px;">이미지를 불러오세요</p>
+        <p style="color: var(--text-sub); margin-bottom: 20px;">파일 드래그, 클릭 또는 <b>Ctrl + V</b>로 붙여넣기</p>
+        <input type="file" id="file-input" class="hidden" accept="image/*">
+        <button onclick="document.getElementById('file-input').click()">이미지 선택</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="main-canvas"></canvas>
+        <div id="magnifier"><canvas id="zoom-canvas"></canvas></div>
+    </div>
+
+    <div class="results" id="result-area">
+        <div class="result-card">
+            <h3>선택된 색상</h3>
+            <div id="preview-box" class="color-preview" style="background-color: #e2e8f0;"></div>
+            <div class="value" id="hex-val">#------</div>
+        </div>
+        <div class="result-card">
+            <h3>표준 데이터</h3>
+            <div class="value" id="hsv-std">H 0, S 0, V 0</div>
+            <div class="sub-value" id="rgb-std">RGB: 0, 0, 0</div>
+        </div>
+        <div class="result-card tr-special">
+            <h3>테일즈런너 입력값</h3>
+            <div class="tr-list">
+                <div class="tr-item"><span class="tr-label">색상 (Hue)</span> <span id="tr-h">0</span></div>
+                <div class="tr-item"><span class="tr-label">채도 (Saturation)</span> <span id="tr-s">0</span></div>
+                <div class="tr-item"><span class="tr-label">명도 (Value)</span> <span id="tr-v">0</span></div>
+            </div>
+        </div>
+    </div>
+    
+    <button id="re-upload" class="hidden" style="margin-top:24px; width:100%; background:#475569">다른 이미지로 교체하기</button>
+</div>
+
+<script>
+const fileInput = document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const container = document.getElementById('canvas-container');
+const magnifier = document.getElementById('magnifier');
+const zoomCanvas = document.getElementById('zoom-canvas');
+const zCtx = zoomCanvas.getContext('2d');
+const reUploadBtn = document.getElementById('re-upload');
+
+let img = new Image();
+
+function rgbToHsv(r, g, b) {
+    r /= 255, g /= 255, b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) { h = 0; } else {
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h: h * 360, s: s * 100, v: v * 100 };
+}
+
+function loadImage(source) {
+    img.onload = () => {
+        canvas.width = img.width; canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        dropZone.classList.add('hidden');
+        container.style.display = 'block';
+        reUploadBtn.classList.remove('hidden');
+    };
+    img.src = source;
+}
+
+fileInput.onchange = e => {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = event => loadImage(event.target.result);
+        reader.readAsDataURL(file);
+    }
+};
+
+window.addEventListener('paste', e => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            const reader = new FileReader();
+            reader.onload = event => loadImage(event.target.result);
+            reader.readAsDataURL(blob);
+            break;
+        }
+    }
+});
+
+reUploadBtn.onclick = () => {
+    dropZone.classList.remove('hidden'); container.style.display = 'none';
+    reUploadBtn.classList.add('hidden'); fileInput.value = '';
+};
+
+container.onmousemove = e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    magnifier.style.display = 'block';
+    magnifier.style.left = (e.clientX - rect.left - 65) + 'px';
+    magnifier.style.top = (e.clientY - rect.top - 65) + 'px';
+    zoomCanvas.width = 130; zoomCanvas.height = 130;
+    zCtx.imageSmoothingEnabled = false;
+    zCtx.drawImage(canvas, x - 10, y - 10, 20, 20, 0, 0, 130, 130);
+    zCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    zCtx.lineWidth = 2; zCtx.strokeRect(58, 58, 14, 14); 
+};
+
+container.onmouseleave = () => magnifier.style.display = 'none';
+
+container.onclick = e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+    const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    const r = pixel[0], g = pixel[1], b = pixel[2];
+    
+    const hsv = rgbToHsv(r, g, b);
+    const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    
+    document.getElementById('preview-box').style.backgroundColor = hex;
+    document.getElementById('hex-val').innerText = hex;
+    document.getElementById('hsv-std').innerText = `H ${Math.round(hsv.h)}, S ${Math.round(hsv.s)}, V ${Math.round(hsv.v)}`;
+    document.getElementById('rgb-std').innerText = `RGB: ${r}, ${g}, ${b}`;
+    
+    document.getElementById('tr-h').innerText = Math.round(hsv.h * 1.42);
+    document.getElementById('tr-s').innerText = Math.round(hsv.s * 5.12);
+    document.getElementById('tr-v').innerText = Math.round(hsv.v * 5.12);
+};
+</script>
+</body>
+</html>
